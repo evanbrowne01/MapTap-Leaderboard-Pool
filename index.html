@@ -447,7 +447,10 @@ async function insertEntryRow(entry){
     headers: Object.assign({}, SB_HEADERS, { Prefer: "return=minimal" }),
     body: JSON.stringify(entry)
   });
-  if(!res.ok) throw new Error("insert failed: "+res.status);
+  if(!res.ok){
+    if(res.status === 409) throw new Error("DUPLICATE_ENTRY");
+    throw new Error("insert failed: "+res.status);
+  }
 }
 async function deleteEntryRow(id){
   const res = await fetch(SUPABASE_URL+"/rest/v1/entries?id=eq."+encodeURIComponent(id), {
@@ -852,7 +855,14 @@ async function commitSave({ player, date, rounds, total }){
     msg("ok", total+" logged for "+player.split(" ")[0]+" on "+prettyDate(date)+
       ". Backdating more? Change the date and paste the next one.");
   }catch(err){
-    msg("bad","Couldn't save that. Check your connection and try again.");
+    if(err.message === "DUPLICATE_ENTRY"){
+      msg("warn", player.split(" ")[0]+"'s score for "+prettyDate(date)+
+        " was just saved by someone else at the same moment. Refresh and use Replace score if you need to overwrite it.");
+      entries = await loadEntries().catch(() => entries);
+      renderAll();
+    } else {
+      msg("bad","Couldn't save that. Check your connection and try again.");
+    }
   }
   btn.disabled = false; btn.textContent = "Save score";
 }
