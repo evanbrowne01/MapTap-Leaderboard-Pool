@@ -675,8 +675,8 @@ function finishBreakdown(){
   Object.values(byDate).forEach(dayEntries => {
     const sorted = dayEntries.slice().sort((a,b) => b.total - a.total);
     let place = 0, lastTotal = null;
-    sorted.forEach(e => {
-      if(e.total !== lastTotal){ place++; lastTotal = e.total; }
+    sorted.forEach((e,i) => {
+      if(e.total !== lastTotal){ place = i+1; lastTotal = e.total; }
       if(!counts[e.player]) counts[e.player] = [0,0,0,0,0,0];
       if(place <= 6) counts[e.player][place-1]++;
     });
