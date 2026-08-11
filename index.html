@@ -8,16 +8,16 @@
 <link rel="apple-touch-icon" href="icon.png">
 <title>Map Tap Daily Pool</title>
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://maptapdaily.netlify.app/">
+<meta property="og:url" content="https://maptapsquad.netlify.app/">
 <meta property="og:title" content="Map Tap Daily Pool">
 <meta property="og:description" content="Leaderboards, records and running score log.">
-<meta property="og:image" content="https://maptapdaily.netlify.app/og-image.png">
+<meta property="og:image" content="https://maptapsquad.netlify.app/og-image.png">
 <meta property="og:image:width" content="1448">
 <meta property="og:image:height" content="985">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Map Tap Daily Pool">
 <meta name="twitter:description" content="Leaderboards, records and running score log.">
-<meta name="twitter:image" content="https://maptapdaily.netlify.app/og-image.png">
+<meta name="twitter:image" content="https://maptapsquad.netlify.app/og-image.png">
 <style>
 :root{
   --bg:#0A1120;
@@ -179,6 +179,18 @@ section{margin-top:20px}
 .rec.cy .badge{border-color:rgba(92,225,245,.45)}
 .rec.cy .big{color:var(--cyan)}
 
+/* finish breakdown */
+.fb-card{padding:4px}
+.fb-scroll{overflow-x:auto}
+.fb-table{width:100%;border-collapse:collapse;min-width:440px}
+.fb-table th{font-size:11px;color:var(--mut);font-weight:700;text-align:center;padding:10px 4px 8px;text-transform:uppercase;letter-spacing:.3px}
+.fb-table th:first-child{text-align:left;padding-left:10px}
+.fb-table td{text-align:center;padding:10px 4px;font-size:14.5px;font-weight:700;font-variant-numeric:tabular-nums;border-top:1px solid var(--line)}
+.fb-table td:first-child{text-align:left;padding-left:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+.fb-table td.z{color:var(--mut);font-weight:500}
+.fb-table tr:first-child td{border-top:0}
+@media (min-width:760px){.fb-table{min-width:0}.fb-table td:first-child{max-width:none}}
+
 /* add score */
 label{display:block;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--mut);margin:0 0 6px}
 select,textarea,input[type=text],input[type=date],input[type=number]{
@@ -311,7 +323,11 @@ textarea{min-height:96px;resize:vertical;line-height:1.5}
 
   <!-- STANDINGS -->
   <section>
-    <h2 class="sec-head">📊 Standings <span class="sec-sub">by avg per game</span></h2>
+    <h2 class="sec-head">📊 Standings <span class="sec-sub" id="standings-sub">by daily wins</span></h2>
+    <div class="tabs metric-tabs" role="tablist">
+      <button class="tab" role="tab" data-metric="wins" aria-selected="true">🏆 By wins</button>
+      <button class="tab" role="tab" data-metric="avg" aria-selected="false">📈 By average</button>
+    </div>
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" data-scope="week" aria-selected="true">This week</button>
       <button class="tab" role="tab" data-scope="month" aria-selected="false">This month</button>
@@ -324,6 +340,21 @@ textarea{min-height:96px;resize:vertical;line-height:1.5}
   <section>
     <h2 class="sec-head">🏆 Records</h2>
     <div class="recs" id="records"></div>
+  </section>
+
+  <!-- FINISH BREAKDOWN -->
+  <section>
+    <h2 class="sec-head">🎯 Finish Breakdown <span class="sec-sub">all-time, by place</span></h2>
+    <div class="card fb-card">
+      <div class="fb-scroll">
+        <table class="fb-table">
+          <thead>
+            <tr><th></th><th>🥇</th><th>🥈</th><th>🥉</th><th>4th</th><th>5th</th><th>6th</th></tr>
+          </thead>
+          <tbody id="finish-breakdown"></tbody>
+        </table>
+      </div>
+    </div>
   </section>
 
   <!-- ADD -->
@@ -431,6 +462,7 @@ const SB_HEADERS = {
 };
 let entries = [];
 let scope = "week";
+let metric = "wins";
 let mode = "paste";
 let selectedDate = null;
 let dateFromPaste = false;
@@ -447,10 +479,7 @@ async function insertEntryRow(entry){
     headers: Object.assign({}, SB_HEADERS, { Prefer: "return=minimal" }),
     body: JSON.stringify(entry)
   });
-  if(!res.ok){
-    if(res.status === 409) throw new Error("DUPLICATE_ENTRY");
-    throw new Error("insert failed: "+res.status);
-  }
+  if(!res.ok) throw new Error("insert failed: "+res.status);
 }
 async function deleteEntryRow(id){
   const res = await fetch(SUPABASE_URL+"/rest/v1/entries?id=eq."+encodeURIComponent(id), {
@@ -582,6 +611,23 @@ function standings(){
   })).sort((a,b) => b.avg - a.avg || b.games - a.games || a.name.localeCompare(b.name));
 }
 
+function standingsByWins(){
+  const map = {};
+  PLAYERS.forEach(p => map[p] = { name:p, games:0, wins:0 });
+  entries.filter(e => inScope(e.date)).forEach(e => {
+    if(!map[e.player]) map[e.player] = { name:e.player, games:0, wins:0 };
+    map[e.player].games++;
+  });
+  const wins = dayWinners();
+  Object.keys(wins).filter(inScope).forEach(d => {
+    wins[d].forEach(p => {
+      if(!map[p]) map[p] = { name:p, games:0, wins:0 };
+      map[p].wins++;
+    });
+  });
+  return Object.values(map).sort((a,b) => b.wins - a.wins || b.games - a.games || a.name.localeCompare(b.name));
+}
+
 function dayWinners(){
   const byDate = {};
   entries.forEach(e => { (byDate[e.date] = byDate[e.date] || []).push(e); });
@@ -621,12 +667,33 @@ function records(){
   return { topDay, topWins, topBest, topCur };
 }
 
+function finishBreakdown(){
+  const byDate = {};
+  entries.forEach(e => { (byDate[e.date] = byDate[e.date] || []).push(e); });
+  const counts = {};
+  PLAYERS.forEach(p => counts[p] = [0,0,0,0,0,0]);
+  Object.values(byDate).forEach(dayEntries => {
+    const sorted = dayEntries.slice().sort((a,b) => b.total - a.total);
+    let place = 0, lastTotal = null;
+    sorted.forEach(e => {
+      if(e.total !== lastTotal){ place++; lastTotal = e.total; }
+      if(!counts[e.player]) counts[e.player] = [0,0,0,0,0,0];
+      if(place <= 6) counts[e.player][place-1]++;
+    });
+  });
+  return Object.entries(counts).map(([name,c]) => ({name, c}))
+    .sort((a,b) => b.c[0]-a.c[0] || b.c[1]-a.c[1] || b.c[2]-a.c[2] || b.c[3]-a.c[3] || b.c[4]-a.c[4] || b.c[5]-a.c[5] || a.name.localeCompare(b.name));
+}
+
 /* ---------- render ---------- */
 function firstName(n){ return n.split(" ")[0]; }
 
 function renderStandings(){
   const el = document.getElementById("standings");
-  const rows = standings();
+  const sub = document.getElementById("standings-sub");
+  if(sub) sub.textContent = metric === "wins" ? "by daily wins" : "by avg per game";
+
+  const rows = metric === "wins" ? standingsByWins() : standings();
   const played = rows.filter(r => r.games > 0);
   if(!played.length){
     el.innerHTML = '<div class="card"><div class="empty">No scores logged for this stretch yet. Post one below to get things moving.</div></div>';
@@ -635,12 +702,31 @@ function renderStandings(){
   el.innerHTML = rows.map((r,i) => {
     const rank = r.games ? "#"+(played.findIndex(p=>p.name===r.name)+1) : "—";
     const lead = r.games && played[0].name === r.name;
+    const sub2 = metric === "wins"
+      ? (r.games ? r.games+" game"+(r.games>1?"s":"")+" played" : "no games logged")
+      : (r.games ? r.games+" game"+(r.games>1?"s":"")+" · "+r.pts.toLocaleString()+" pts" : "no games logged");
+    const val = metric === "wins" ? (r.games ? r.wins : "—") : (r.games ? r.avg : "—");
     return '<div class="row '+(lead?"lead":"")+' '+(r.games?"":"dim")+'">'+
       '<div class="rk">'+rank+'</div>'+
-      '<div class="nm">'+r.name+'<small>'+(r.games ? r.games+" game"+(r.games>1?"s":"")+" · "+r.pts.toLocaleString()+" pts" : "no games logged")+'</small></div>'+
-      '<div class="val">'+(r.games ? r.avg : "—")+'</div>'+
+      '<div class="nm">'+r.name+'<small>'+sub2+'</small></div>'+
+      '<div class="val">'+val+'</div>'+
     '</div>';
   }).join("");
+}
+
+function renderFinishBreakdown(){
+  const el = document.getElementById("finish-breakdown");
+  if(!el) return;
+  const rows = finishBreakdown().filter(r => r.c.some(n => n > 0));
+  if(!rows.length){
+    el.innerHTML = '<tr><td colspan="7" class="empty">No scores logged yet.</td></tr>';
+    return;
+  }
+  el.innerHTML = rows.map(r =>
+    '<tr><td>'+firstName(r.name)+'</td>'+
+    r.c.map(n => '<td'+(n===0?' class="z"':'')+'>'+n+'</td>').join("")+
+    '</tr>'
+  ).join("");
 }
 
 function renderRecords(){
@@ -731,7 +817,7 @@ function renderHeader(){
     n ? n+" of "+PLAYERS.length+" posted today" : "Nobody's posted today yet";
 }
 
-function renderAll(){ renderHeader(); renderStandings(); renderRecords(); renderLog(); }
+function renderAll(){ renderHeader(); renderStandings(); renderRecords(); renderFinishBreakdown(); renderLog(); }
 
 /* ---------- date control ---------- */
 function setDate(d, fromPaste){
@@ -855,14 +941,7 @@ async function commitSave({ player, date, rounds, total }){
     msg("ok", total+" logged for "+player.split(" ")[0]+" on "+prettyDate(date)+
       ". Backdating more? Change the date and paste the next one.");
   }catch(err){
-    if(err.message === "DUPLICATE_ENTRY"){
-      msg("warn", player.split(" ")[0]+"'s score for "+prettyDate(date)+
-        " was just saved by someone else at the same moment. Refresh and use Replace score if you need to overwrite it.");
-      entries = await loadEntries().catch(() => entries);
-      renderAll();
-    } else {
-      msg("bad","Couldn't save that. Check your connection and try again.");
-    }
+    msg("bad","Couldn't save that. Check your connection and try again.");
   }
   btn.disabled = false; btn.textContent = "Save score";
 }
@@ -964,10 +1043,12 @@ function init(){
   });
   di.addEventListener("change", () => { if(di.value) setDate(di.value, false); });
 
-  document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected","false"));
+  document.querySelectorAll(".tabs .tab").forEach(t => t.addEventListener("click", () => {
+    const group = t.closest(".tabs");
+    group.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected","false"));
     t.setAttribute("aria-selected","true");
-    scope = t.dataset.scope;
+    if(t.dataset.scope) scope = t.dataset.scope;
+    if(t.dataset.metric) metric = t.dataset.metric;
     renderStandings();
   }));
 
